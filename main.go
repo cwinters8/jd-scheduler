@@ -19,6 +19,7 @@ import (
 	"github.com/gofiber/storage/redis"
 	"github.com/gofiber/template/html"
 	"github.com/joho/godotenv"
+	"golang.org/x/oauth2"
 )
 
 func setup() error {
@@ -32,36 +33,40 @@ func setup() error {
 
 	engine := html.New("templates", ".html")
 	app := fiber.New(fiber.Config{
-		Views: engine,
+		Views:       engine,
+		ViewsLayout: "layouts/main",
 	})
 	storage := redis.New()
 	store := session.New(session.Config{
 		Expiration: 24 * time.Hour,
 		CookiePath: "/",
-		// CookieSecure:   true,
+		// CookieSecure:   true, // TODO: enable for deployment
 		CookieHTTPOnly: true,
-		// CookieSameSite: "Strict",
-		Storage: storage,
+		Storage:        storage,
 	})
 	app.Use(logger.New())
 	app.Get("/", func(c *fiber.Ctx) error {
-		return c.Render("index", fiber.Map{}, "layouts/main")
-	})
-	app.Get("/session/set", func(c *fiber.Ctx) error {
 		sess, err := store.Get(c)
 		if err != nil {
-			return utils.RenderError(c, http.StatusInternalServerError, "failed to get session store: "+err.Error())
+			return renderGetSessionError(c, err)
 		}
-		sess.Set("value", "a random value to test session store")
-		if err := sess.Save(); err != nil {
-			return utils.RenderError(c, http.StatusInternalServerError, "failed to save session: "+err.Error())
-		}
-		return c.Render("test", fiber.Map{
-			"Text": "should be storing a session value",
-		}, "layouts/main")
+		return c.Render("index", fiber.Map{
+			"LoggedIn": isLoggedIn(c, sess),
+		})
 	})
 
-	// TODO NEXT: test the auth mechanism
+	app.Get("/logout", func(c *fiber.Ctx) error {
+		sess, err := store.Get(c)
+		if err != nil {
+			return renderGetSessionError(c, err)
+		}
+		if err := sess.Destroy(); err != nil {
+			return utils.RenderError(c, http.StatusInternalServerError, "failed to destroy session: "+err.Error())
+		}
+		return c.Redirect("/")
+	})
+
+	// TODO NEXT: test the auth mechanism end to end
 
 	oauthCfg, err := google.GetAuthConfig(os.Getenv("CREDS_PATH"))
 	if err != nil {
@@ -80,7 +85,13 @@ func setup() error {
 	cal := app.Group("/calendar")
 	cal.Use(authHandler)
 	cal.Get("/", func(c *fiber.Ctx) error {
-		return c.Render("calendar", fiber.Map{}, "layouts/main")
+		sess, err := store.Get(c)
+		if err != nil {
+			return renderGetSessionError(c, err)
+		}
+		return c.Render("calendar", fiber.Map{
+			"LoggedIn": isLoggedIn(c, sess),
+		})
 	})
 
 	return app.Listen(":3000")
@@ -90,6 +101,19 @@ func main() {
 	if err := setup(); err != nil {
 		log.Fatal("failed to setup app: " + err.Error())
 	}
+}
+
+func renderGetSessionError(ctx *fiber.Ctx, err error) error {
+	return utils.RenderError(ctx, http.StatusInternalServerError, "failed to get session store: "+err.Error())
+}
+
+func isLoggedIn(ctx *fiber.Ctx, sess *session.Session) bool {
+	possibleToken := sess.Get("token")
+	token, ok := possibleToken.(oauth2.Token)
+	if !ok || !token.Valid() {
+		return false
+	}
+	return true
 }
 
 // func getDatabase() (*sql.DB, error) {
