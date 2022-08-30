@@ -4,6 +4,7 @@ import (
 
 	// "database/sql"
 	"errors"
+	"fmt"
 	"log"
 	"net/http"
 	"os"
@@ -51,7 +52,7 @@ func setup() error {
 			return renderGetSessionError(c, err)
 		}
 		return c.Render("index", fiber.Map{
-			"LoggedIn": isLoggedIn(c, sess),
+			"LoggedIn": isLoggedIn(sess),
 		})
 	})
 
@@ -90,7 +91,31 @@ func setup() error {
 			return renderGetSessionError(c, err)
 		}
 		return c.Render("calendar", fiber.Map{
-			"LoggedIn": isLoggedIn(c, sess),
+			"LoggedIn": isLoggedIn(sess),
+		})
+	})
+	cal.Post("/", func(c *fiber.Ctx) error {
+		sess, err := store.Get(c)
+		if err != nil {
+			return renderGetSessionError(c, err)
+		}
+		cal, err := google.NewCalendar(c.Context(), authCfg.OauthCfg.Client(
+			c.Context(),
+			getToken(sess),
+		), c.FormValue("new calendar title", "Scheduler"))
+		if err != nil {
+			return utils.RenderError(
+				c,
+				http.StatusInternalServerError,
+				"failed to create new calendar: "+err.Error(),
+			)
+		}
+		return c.Render("success", fiber.Map{
+			"Message": fmt.Sprintf(
+				"Successfully created a new calendar with ID %s and title %s 🎉 🗓",
+				cal.Id,
+				cal.Summary,
+			),
 		})
 	})
 
@@ -107,7 +132,16 @@ func renderGetSessionError(ctx *fiber.Ctx, err error) error {
 	return utils.RenderError(ctx, http.StatusInternalServerError, "failed to get session store: "+err.Error())
 }
 
-func isLoggedIn(ctx *fiber.Ctx, sess *session.Session) bool {
+func getToken(sess *session.Session) *oauth2.Token {
+	possibleToken := sess.Get("token")
+	token, ok := possibleToken.(oauth2.Token)
+	if !ok || !token.Valid() {
+		return nil
+	}
+	return &token
+}
+
+func isLoggedIn(sess *session.Session) bool {
 	possibleToken := sess.Get("token")
 	token, ok := possibleToken.(oauth2.Token)
 	if !ok || !token.Valid() {

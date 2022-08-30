@@ -27,7 +27,7 @@ func (cfg AuthConfig) NewAuthHandler() (fiber.Handler, error) {
 		}
 		possibleToken := sess.Get("token")
 		if token, ok := possibleToken.(oauth2.Token); ok && token.Valid() {
-			c.Locals("client", cfg.OauthCfg.Client(c.Context(), &token))
+			// c.Locals("client", cfg.OauthCfg.Client(c.Context(), &token))
 			return c.Next()
 		}
 		// set origin path value in session
