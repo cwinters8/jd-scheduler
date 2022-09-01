@@ -112,7 +112,7 @@ func setup() error {
 		}
 		return c.Render("success", fiber.Map{
 			"Message": fmt.Sprintf(
-				"Successfully created a new calendar with ID %s and title %s 🎉 🗓",
+				"Successfully created a new calendar with ID '%s' and title '%s' 🎉 🗓",
 				cal.Id,
 				cal.Summary,
 			),
