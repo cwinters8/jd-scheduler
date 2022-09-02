@@ -4,10 +4,12 @@ import (
 	"errors"
 	"log"
 	"net/http"
+	"strings"
 
 	"scheduler/utils"
 
 	"github.com/gofiber/fiber/v2"
+	"github.com/gofiber/fiber/v2/middleware/favicon"
 	"github.com/gofiber/fiber/v2/middleware/logger"
 	"github.com/gofiber/fiber/v2/middleware/session"
 	"github.com/gofiber/template/html"
@@ -16,7 +18,7 @@ import (
 )
 
 func setup() error {
-	if err := godotenv.Load(); err != nil {
+	if err := godotenv.Load(); err != nil && !strings.Contains(err.Error(), "no such file") {
 		return errors.New("failed to load .env: " + err.Error())
 	}
 
@@ -25,6 +27,9 @@ func setup() error {
 		Views:       engine,
 		ViewsLayout: "layouts/main",
 	})
+	app.Use(favicon.New(favicon.Config{
+		File: "./assets/favicon.ico",
+	}))
 	app.Use(logger.New())
 	app.Get("/", func(c *fiber.Ctx) error {
 		return c.Render("index", fiber.Map{
