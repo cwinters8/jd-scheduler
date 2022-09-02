@@ -20,6 +20,8 @@ import (
 	"github.com/gofiber/storage/redis"
 	"github.com/gofiber/template/html"
 	"github.com/joho/godotenv"
+	"github.com/stytchauth/stytch-go/v4/stytch"
+	"github.com/stytchauth/stytch-go/v4/stytch/stytchapi"
 	"golang.org/x/oauth2"
 )
 
@@ -27,11 +29,6 @@ func setup() error {
 	if err := godotenv.Load(); err != nil {
 		return errors.New("failed to load .env: " + err.Error())
 	}
-	// db, err := getDatabase()
-	// if err != nil {
-	// 	return errors.New("failed to connect to database: " + err.Error())
-	// }
-
 	engine := html.New("templates", ".html")
 	app := fiber.New(fiber.Config{
 		Views:       engine,
@@ -39,12 +36,23 @@ func setup() error {
 	})
 	storage := redis.New()
 	store := session.New(session.Config{
-		Expiration: 24 * time.Hour,
-		CookiePath: "/",
-		// CookieSecure:   true, // TODO: enable for deployment
+		Expiration:     24 * time.Hour,
+		CookiePath:     "/",
+		CookieSecure:   true,
 		CookieHTTPOnly: true,
 		Storage:        storage,
 	})
+
+	// stytch client config
+	stytchClient, err := stytchapi.NewAPIClient(
+		stytch.EnvTest,
+		os.Getenv("STYTCH_PROJECT_ID"),
+		os.Getenv("STYTCH_SECRET"),
+	)
+	if err != nil {
+		return errors.New("failed to configure Stytch API client: " + err.Error())
+	}
+
 	app.Use(logger.New())
 	app.Get("/", func(c *fiber.Ctx) error {
 		sess, err := store.Get(c)
@@ -67,7 +75,17 @@ func setup() error {
 		return c.Redirect("/")
 	})
 
-	// TODO NEXT: test the auth mechanism end to end
+	app.Get("/auth", func(c *fiber.Ctx) error {
+		token := c.Params("token")
+		if len(token) < 1 {
+			return utils.RenderError(c, http.StatusUnauthorized, "missing token parameter")
+		}
+		stytchClient.OAuth.Authenticate(&stytch.OAuthAuthenticateParams{
+			Token:                  token,
+			SessionDurationMinutes: int32(60),
+		})
+		return nil
+	})
 
 	oauthCfg, err := google.GetAuthConfig(os.Getenv("CREDS_PATH"))
 	if err != nil {
