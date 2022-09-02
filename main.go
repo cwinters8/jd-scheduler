@@ -4,8 +4,10 @@ import (
 	"errors"
 	"log"
 	"net/http"
+	"os"
 	"strings"
 
+	"scheduler/stytch"
 	"scheduler/utils"
 
 	"github.com/gofiber/fiber/v2"
@@ -14,6 +16,7 @@ import (
 	"github.com/gofiber/fiber/v2/middleware/session"
 	"github.com/gofiber/template/html"
 	"github.com/joho/godotenv"
+	"github.com/stytchauth/stytch-go/v5/stytch/config"
 	"golang.org/x/oauth2"
 )
 
@@ -27,6 +30,17 @@ func setup() error {
 		Views:       engine,
 		ViewsLayout: "layouts/main",
 	})
+
+	// stytch config
+	stytchClient, err := stytch.NewClient(
+		config.EnvTest,
+		os.Getenv("STYTCH_CLIENT_ID"),
+		os.Getenv("STYTCH_SECRET"),
+	)
+	if err != nil {
+		return err
+	}
+
 	app.Use(favicon.New(favicon.Config{
 		File: "./assets/favicon.ico",
 	}))
@@ -35,6 +49,15 @@ func setup() error {
 		return c.Render("index", fiber.Map{
 			"LoggedIn": false,
 		})
+	})
+
+	app.Get("/oauth", func(c *fiber.Ctx) error {
+		_, err := stytchClient.AuthenticateOauth(c.Params("token"))
+		if err != nil {
+			return utils.RenderError(c, http.StatusUnauthorized, "failed to authenticate oauth token: "+err.Error())
+		}
+		// TODO: store session token for later use
+		return nil
 	})
 
 	return app.Listen(":3000")
