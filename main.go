@@ -63,7 +63,6 @@ func setup() error {
 	app.Use(logger.New())
 	app.Get("/", func(c *fiber.Ctx) error {
 		return c.Render("index", fiber.Map{
-			// how can I inexpensively find out if the user is logged in? 🤔
 			"LoggedIn": false,
 		})
 	})
@@ -75,7 +74,7 @@ func setup() error {
 	app.Get("/logout", func(c *fiber.Ctx) error {
 		sess, err := store.Get(c)
 		if err != nil {
-			return renderGetSessionError(c, err)
+			return utils.RenderGetSessionError(c, err)
 		}
 		sessToken, _ := sess.Get("session_token").(string)
 		// revoke stytch session
@@ -92,7 +91,7 @@ func setup() error {
 	app.Get("/oauth", func(c *fiber.Ctx) error {
 		sess, err := store.Get(c)
 		if err != nil {
-			return renderGetSessionError(c, err)
+			return utils.RenderGetSessionError(c, err)
 		}
 		// try to get an existing session token from the store
 		currentSessToken, _ := sess.Get("session_token").(string)
@@ -105,6 +104,7 @@ func setup() error {
 		sess.Set("session_token", sessToken)
 		// try getting a redirect path from the store
 		redirect, _ := sess.Get("auth_redirect").(string)
+		sess.Delete("auth_redirect")
 		// save the session
 		if err := sess.Save(); err != nil {
 			return utils.RenderError(c, http.StatusInternalServerError, fmt.Errorf("failed to save session: %w", err))
@@ -116,7 +116,7 @@ func setup() error {
 		return c.Redirect(redirect)
 	})
 
-	app.Use(middleware.NewAuthHandler(store, stytchClient))
+	app.Use(middleware.NewAuthHandler(store, stytchClient, true))
 	// authenticated routes ⬇️
 	app.Get("/dash", func(c *fiber.Ctx) error {
 		return c.Render("dash", fiber.Map{
@@ -132,9 +132,4 @@ func main() {
 	if err := setup(); err != nil {
 		log.Fatal("failed to setup app: " + err.Error())
 	}
-}
-
-// TODO: replace this with utils.RenderGetSessionError
-func renderGetSessionError(ctx *fiber.Ctx, err error) error {
-	return utils.RenderError(ctx, http.StatusInternalServerError, fmt.Errorf("failed to get session store: %w", err))
 }

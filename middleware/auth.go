@@ -11,27 +11,34 @@ import (
 	"github.com/gofiber/fiber/v2/middleware/session"
 )
 
-func NewAuthHandler(store *session.Store, client *stytch.Client) fiber.Handler {
+// if redirectOnError is true, when an error occurs the handler will:
+// - set an auth_error session value, which can optionally be provided to the user
+// - redirect to /login instead of rendering the error page
+func NewAuthHandler(store *session.Store, client *stytch.Client, redirectOnError bool) fiber.Handler {
+	errorHandler := func(ctx *fiber.Ctx, sess *session.Session, err error, statusCode int) error {
+		if redirectOnError {
+			sess.Set("auth_error", err)
+			sess.Save() // not handling the save error here because it is not crucial that auth_error be available
+			return ctx.Redirect("/login")
+		}
+		return utils.RenderError(ctx, statusCode, err)
+	}
 	return func(c *fiber.Ctx) error {
 		sess, err := store.Get(c)
 		if err != nil {
-			return RenderGetSessionError(c, err)
+			return errorHandler(c, sess, err, http.StatusInternalServerError)
 		}
 		sessToken, ok := sess.Get("session_token").(string)
 		if !ok || len(sessToken) < 1 {
-			return utils.RenderError(c, http.StatusUnauthorized, fmt.Errorf("unable to authenticate: session token not found"))
+			return errorHandler(c, sess, fmt.Errorf("unable to authenticate: session token not found"), http.StatusUnauthorized)
 		}
 		// validate session token
 		user, err := client.AuthenticateSession(sessToken)
 		if err != nil {
-			return utils.RenderError(c, http.StatusUnauthorized, err)
+			return errorHandler(c, sess, err, http.StatusUnauthorized)
 		}
 		c.Locals("user", *user)
 		fmt.Printf("successfully authenticated session for user %s\n", user.UserID)
 		return c.Next()
 	}
-}
-
-func RenderGetSessionError(ctx *fiber.Ctx, err error) error {
-	return utils.RenderError(ctx, http.StatusInternalServerError, fmt.Errorf("failed to get session store: %w", err))
 }
