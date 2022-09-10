@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"errors"
 	"fmt"
 	"log"
@@ -20,6 +21,8 @@ import (
 	"github.com/gofiber/storage/redis"
 	"github.com/gofiber/template/html"
 	"github.com/joho/godotenv"
+	"github.com/sendgrid/sendgrid-go"
+	"github.com/sendgrid/sendgrid-go/helpers/mail"
 	"github.com/stytchauth/stytch-go/v5/stytch/config"
 )
 
@@ -41,6 +44,8 @@ func setup() error {
 		CookieHTTPOnly: true,
 		Storage:        storage,
 	})
+
+	client := sendgrid.NewSendClient(os.Getenv("SENDGRID_API_KEY"))
 
 	// stytch config
 	stytchClient, err := stytch.NewClient(
@@ -67,6 +72,13 @@ func setup() error {
 		})
 	})
 	app.Get("/login", func(c *fiber.Ctx) error {
+		redirect := c.Query("redirect")
+		if len(redirect) > 0 {
+			if sess, err := store.Get(c); err == nil {
+				sess.Set("auth_redirect", redirect)
+				sess.Save()
+			}
+		}
 		return c.Render("login", fiber.Map{
 			"GoogleLoginURL": googleLoginURL,
 		})
@@ -124,6 +136,63 @@ func setup() error {
 			"LoggedIn": true,
 		})
 	})
+	// TODO: PLAYGROUND START get rid of these
+	app.Get("/redis/list/append", func(c *fiber.Ctx) error {
+		rdb := storage.Conn()
+		list := []string{"a", "b", "c"}
+		count, err := rdb.RPush(c.Context(), "list_test", list).Result()
+		if err != nil {
+			return utils.RenderError(c, http.StatusInternalServerError, fmt.Errorf("failed to initialize list and add 'a', 'b', and 'c' to it: %w", err))
+		}
+		if count != 3 {
+			return utils.RenderError(c, http.StatusInternalServerError, fmt.Errorf("incorrect number of elements pushed: expected 3, got %d", count))
+		}
+		return c.Render("data", fiber.Map{
+			"Data": fmt.Sprintf("successfully initialized redis list and pushed %d elements to it", count),
+		})
+	})
+	app.Get("/redis/list", func(c *fiber.Ctx) error {
+		rdb := storage.Conn()
+		values, err := rdb.LRange(c.Context(), "list_test", 0, -1).Result()
+		if err != nil {
+			return utils.RenderError(c, http.StatusInternalServerError, fmt.Errorf("failed to get list items: %w", err))
+		}
+		return c.Render("data", fiber.Map{
+			"Data": fmt.Sprintf("found values: %v", values),
+		})
+	})
+	app.Get("/mail", func(c *fiber.Ctx) error {
+		return c.Render("mail", fiber.Map{
+			"LoggedIn": true,
+		})
+	})
+	app.Post("/mail", func(c *fiber.Ctx) error {
+		subject := c.FormValue("subject")
+		message := c.FormValue("message")
+
+		layout := "layouts/email"
+		content := fiber.Map{
+			"Title": "Hello from Scheduler 🚀",
+			"Body":  message,
+		}
+		from := mail.NewEmail("Scheduler Admin", "clark@orionsbelt.dev") // TODO: read from env variables maybe
+		to := mail.NewEmail(c.FormValue("to-name"), c.FormValue("to-email"))
+		var buf bytes.Buffer
+		if err := engine.Render(&buf, "email", content, layout); err != nil {
+			return utils.RenderError(c, http.StatusInternalServerError, fmt.Errorf("failed to render email: %w", err))
+		}
+		email := mail.NewSingleEmail(from, subject, to, message, buf.String())
+
+		_, err := client.Send(email)
+		if err != nil {
+			return utils.RenderError(c, http.StatusInternalServerError, fmt.Errorf("failed to send mail to %s: %w", to.Address, err))
+		}
+		content["Name"] = to.Name
+		content["Email"] = to.Address
+		content["LoggedIn"] = true
+		return c.Render("mail_success", content)
+	})
+	// PLAYGROUND END get rid of these
 
 	return app.Listen(":3000")
 }

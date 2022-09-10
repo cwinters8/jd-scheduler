@@ -19,7 +19,7 @@ func NewAuthHandler(store *session.Store, client *stytch.Client, redirectOnError
 		if redirectOnError {
 			sess.Set("auth_error", err)
 			sess.Save() // not handling the save error here because it is not crucial that auth_error be available
-			return ctx.Redirect("/login")
+			return ctx.Redirect(fmt.Sprintf("/login?redirect=%s", ctx.Path()))
 		}
 		return utils.RenderError(ctx, statusCode, err)
 	}
