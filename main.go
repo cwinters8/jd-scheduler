@@ -1,11 +1,13 @@
 package main
 
 import (
+	"crypto/tls"
 	"errors"
 	"fmt"
 	"log"
 	"net/http"
 	"os"
+	"strconv"
 	"strings"
 	"time"
 
@@ -33,7 +35,24 @@ func setup() error {
 		Views:       engine,
 		ViewsLayout: "layouts/main",
 	})
-	storage := redis.New()
+	redisPort, err := strconv.Atoi(os.Getenv("REDIS_PORT"))
+	if err != nil {
+		return fmt.Errorf("failed to parse REDIS_PORT as int: %w", err)
+	}
+	cert, err := tls.LoadX509KeyPair(os.Getenv("PUBLIC_KEY_PATH"), os.Getenv("PRIVATE_KEY_PATH"))
+	if err != nil {
+		// return error
+		return fmt.Errorf("failed to load cert keypair: %w", err)
+	}
+	cfg := redis.Config{
+		Host:     os.Getenv("REDIS_HOST"),
+		Port:     redisPort,
+		Password: os.Getenv("REDIS_PASSWORD"),
+		TLSConfig: &tls.Config{
+			Certificates: []tls.Certificate{cert},
+		},
+	}
+	storage := redis.New(cfg)
 	store := session.New(session.Config{
 		Expiration:     24 * time.Hour,
 		CookiePath:     "/",
