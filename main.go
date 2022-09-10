@@ -23,6 +23,7 @@ import (
 	"github.com/gofiber/template/html"
 	"github.com/joho/godotenv"
 	"github.com/stytchauth/stytch-go/v5/stytch/config"
+	// "github.com/sendgrid/sendgrid-go"
 )
 
 func setup() error {
@@ -60,6 +61,8 @@ func setup() error {
 		CookieHTTPOnly: true,
 		Storage:        storage,
 	})
+	// TODO: uncomment when ready to start sending emails
+	// client := sendgrid.NewSendClient(os.Getenv("SENDGRID_API_KEY"))
 
 	// stytch config
 	stytchClient, err := stytch.NewClient(
