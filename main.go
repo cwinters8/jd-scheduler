@@ -140,22 +140,25 @@ func setup() error {
 	})
 
 	app.Use(middleware.NewAuthHandler(cfg, true))
+	authedHandler := func(tmpl string, args fiber.Map) fiber.Handler {
+		return func(c *fiber.Ctx) error {
+			_, ok := args["LoggedIn"].(bool)
+			if !ok {
+				args["LoggedIn"] = true
+			}
+			return c.Render(tmpl, args)
+		}
+	}
 	// authenticated routes ⬇️
-	app.Get("/dash", func(c *fiber.Ctx) error {
-		return c.Render("dash", fiber.Map{
-			"Message":  "You made it! 🎉",
-			"LoggedIn": true,
-		})
-	})
+	app.Get("/dash", authedHandler("dash", fiber.Map{
+		"Message": "You made it! 🎉",
+	}))
 
-	app.Use(middleware.NewRoleValidator(stytch.Admin))
+	app.Use("/admin", middleware.NewRoleValidator(stytch.Admin))
 	// admin routes ⬇️
-	app.Get("/admin", func(c *fiber.Ctx) error {
-		return c.Render("success", fiber.Map{
-			"Message": "Well done, you're an admin! 👨‍💼",
-		})
-		// return c.Render("admin", fiber.Map{})
-	})
+	app.Get("/admin", authedHandler("success", fiber.Map{
+		"Message": "Well done, you're an admin! 👨‍💼",
+	}))
 
 	return app.Listen(":3000")
 }

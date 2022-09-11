@@ -17,8 +17,12 @@ import (
 func NewAuthHandler(cfg *AppConfig, redirectOnError bool) fiber.Handler {
 	errorHandler := func(ctx *fiber.Ctx, sess *session.Session, err error, statusCode int) error {
 		if redirectOnError {
-			sess.Set("auth_error", err)
-			sess.Save() // not handling the save error here because it is not crucial that auth_error be available
+			sess.Set("auth_error", err.Error()) // TODO: I don't think this is being displayed anywhere... possibly pass back to UI at /login
+			// set path redirect value to go to after login
+			sess.Set("auth_redirect", ctx.Path())
+			if err := sess.Save(); err != nil {
+				return utils.RenderError(ctx, http.StatusInternalServerError, fmt.Errorf("failed to save session data: %w", err))
+			}
 			return ctx.Redirect("/login")
 		}
 		return utils.RenderError(ctx, statusCode, err)

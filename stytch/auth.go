@@ -50,15 +50,12 @@ type User struct {
 }
 
 func NewUser(ctx context.Context, stytchUser *stytch.User, storage *redis.Storage) (*User, error) {
+	user := User{*stytchUser, []Role{}}
 	// get roles from db
-	roles, err := GetRoles(ctx, stytchUser.UserID, storage)
-	if err != nil {
+	if err := user.GetRoles(ctx, storage); err != nil {
 		return nil, fmt.Errorf("failed to get roles: %w", err)
 	}
-	return &User{
-		*stytchUser,
-		roles,
-	}, nil
+	return &user, nil
 }
 
 func (c *Client) AuthenticateSession(ctx context.Context, sessionToken string, storage *redis.Storage) (*User, error) {
@@ -93,16 +90,23 @@ const (
 	end
 )
 
-func GetRoles(ctx context.Context, userID string, storage *redis.Storage) ([]Role, error) {
+func (u *User) GetRoles(ctx context.Context, storage *redis.Storage) error {
 	rdb := storage.Conn()
-	rawRoles, err := rdb.SMembers(ctx, fmt.Sprintf(UserRoleKeyFormat, userID)).Result()
+	rawRoles, err := rdb.SMembers(ctx, fmt.Sprintf(UserRoleKeyFormat, u.UserID)).Result()
 	if err != nil {
-		return nil, fmt.Errorf("failed to get roles from redis: %w", err)
+		return fmt.Errorf("failed to get roles from redis: %w", err)
 	}
-	return parseRoles(rawRoles)
+	roles, err := parseRoles(rawRoles)
+	if err != nil {
+		return fmt.Errorf("failed to parse roles: %w", err)
+	}
+	u.Roles = roles
+	return nil
 }
 
-// TODO NEXT: method or function that uses redis `SISMEMBER` to check if a user has a given role
+func (u *User) HasRole(ctx context.Context, role Role, storage *redis.Storage) (bool, error) {
+	return storage.Conn().SIsMember(ctx, fmt.Sprintf(UserRoleKeyFormat, u.UserID), role).Result()
+}
 
 const UserRoleKeyFormat = "user:%s:roles"
 
