@@ -42,10 +42,9 @@ func setup() error {
 	}
 	cert, err := tls.LoadX509KeyPair(os.Getenv("PUBLIC_KEY_PATH"), os.Getenv("PRIVATE_KEY_PATH"))
 	if err != nil {
-		// return error
 		return fmt.Errorf("failed to load cert keypair: %w", err)
 	}
-	cfg := redis.Config{
+	redisCfg := redis.Config{
 		Host:     os.Getenv("REDIS_HOST"),
 		Port:     redisPort,
 		Password: os.Getenv("REDIS_PASSWORD"),
@@ -53,7 +52,7 @@ func setup() error {
 			Certificates: []tls.Certificate{cert},
 		},
 	}
-	storage := redis.New(cfg)
+	storage := redis.New(redisCfg)
 	store := session.New(session.Config{
 		Expiration:     24 * time.Hour,
 		CookiePath:     "/",
@@ -71,8 +70,10 @@ func setup() error {
 		os.Getenv("STYTCH_SECRET"),
 	)
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to create new stytch client: %w", err)
 	}
+	cfg := middleware.NewAppConfig(store, stytchClient, storage)
+
 	googleLoginURL := fmt.Sprintf(
 		"%s?public_token=%s",
 		os.Getenv("GOOGLE_OAUTH_START"),
@@ -138,13 +139,22 @@ func setup() error {
 		return c.Redirect(redirect)
 	})
 
-	app.Use(middleware.NewAuthHandler(store, stytchClient, true))
+	app.Use(middleware.NewAuthHandler(cfg, true))
 	// authenticated routes ⬇️
 	app.Get("/dash", func(c *fiber.Ctx) error {
 		return c.Render("dash", fiber.Map{
 			"Message":  "You made it! 🎉",
 			"LoggedIn": true,
 		})
+	})
+
+	app.Use(middleware.NewRoleValidator(stytch.Admin))
+	// admin routes ⬇️
+	app.Get("/admin", func(c *fiber.Ctx) error {
+		return c.Render("success", fiber.Map{
+			"Message": "Well done, you're an admin! 👨‍💼",
+		})
+		// return c.Render("admin", fiber.Map{})
 	})
 
 	return app.Listen(":3000")

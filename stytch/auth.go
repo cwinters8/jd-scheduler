@@ -1,9 +1,12 @@
 package stytch
 
 import (
+	"context"
 	"errors"
 	"fmt"
+	"strconv"
 
+	"github.com/gofiber/storage/redis"
 	"github.com/stytchauth/stytch-go/v5/stytch"
 	"github.com/stytchauth/stytch-go/v5/stytch/config"
 	"github.com/stytchauth/stytch-go/v5/stytch/stytchapi"
@@ -41,9 +44,24 @@ func (c *Client) AuthenticateOauth(token string, sessionToken string) (string, e
 	return resp.SessionToken, nil
 }
 
-type User stytch.User
+type User struct {
+	stytch.User
+	Roles []Role
+}
 
-func (c *Client) AuthenticateSession(sessionToken string) (*User, error) {
+func NewUser(ctx context.Context, stytchUser *stytch.User, storage *redis.Storage) (*User, error) {
+	// get roles from db
+	roles, err := GetRoles(ctx, stytchUser.UserID, storage)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get roles: %w", err)
+	}
+	return &User{
+		*stytchUser,
+		roles,
+	}, nil
+}
+
+func (c *Client) AuthenticateSession(ctx context.Context, sessionToken string, storage *redis.Storage) (*User, error) {
 	resp, err := c.api.Sessions.Authenticate(&stytch.SessionsAuthenticateParams{
 		SessionToken:           sessionToken,
 		SessionDurationMinutes: 60,
@@ -51,8 +69,7 @@ func (c *Client) AuthenticateSession(sessionToken string) (*User, error) {
 	if err != nil {
 		return nil, fmt.Errorf("unable to authenticate session token: %w", err)
 	}
-	user := User(resp.User)
-	return &user, nil
+	return NewUser(ctx, &resp.User, storage)
 }
 
 func (c *Client) RevokeSession(sessionToken string) error {
@@ -62,4 +79,57 @@ func (c *Client) RevokeSession(sessionToken string) error {
 		return fmt.Errorf("failed to revoke session: %w", err)
 	}
 	return nil
+}
+
+type Role int
+
+// additional roles need to be between `undefined` and `end`
+// roles should be in order of least to highest privilege
+const (
+	undefined Role = iota
+	Recruit
+	Volunteer
+	Admin
+	end
+)
+
+func GetRoles(ctx context.Context, userID string, storage *redis.Storage) ([]Role, error) {
+	rdb := storage.Conn()
+	rawRoles, err := rdb.SMembers(ctx, fmt.Sprintf(UserRoleKeyFormat, userID)).Result()
+	if err != nil {
+		return nil, fmt.Errorf("failed to get roles from redis: %w", err)
+	}
+	return parseRoles(rawRoles)
+}
+
+// TODO NEXT: method or function that uses redis `SISMEMBER` to check if a user has a given role
+
+const UserRoleKeyFormat = "user:%s:roles"
+
+func (r Role) String() string {
+	switch r {
+	case Recruit:
+		return "recruit"
+	case Volunteer:
+		return "volunteer"
+	case Admin:
+		return "admin"
+	default:
+		return ""
+	}
+}
+
+func parseRoles(rawRoles []string) ([]Role, error) {
+	var roles []Role
+	for _, r := range rawRoles {
+		roleNum, err := strconv.Atoi(r)
+		if err != nil {
+			return nil, fmt.Errorf("failed to convert raw role string to int")
+		}
+		role := Role(roleNum)
+		if role > undefined && role < end {
+			roles = append(roles, role)
+		}
+	}
+	return roles, nil
 }
