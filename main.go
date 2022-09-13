@@ -11,9 +11,11 @@ import (
 	"strings"
 	"time"
 
+	"scheduler/mail"
 	"scheduler/middleware"
 	"scheduler/stytch"
 	"scheduler/utils"
+	"scheduler/volunteers"
 
 	"github.com/gofiber/fiber/v2"
 	"github.com/gofiber/fiber/v2/middleware/favicon"
@@ -23,7 +25,6 @@ import (
 	"github.com/gofiber/template/html"
 	"github.com/joho/godotenv"
 	"github.com/stytchauth/stytch-go/v5/stytch/config"
-	// "github.com/sendgrid/sendgrid-go"
 )
 
 func setup() error {
@@ -60,8 +61,11 @@ func setup() error {
 		CookieHTTPOnly: true,
 		Storage:        storage,
 	})
-	// TODO: uncomment when ready to start sending emails
-	// client := sendgrid.NewSendClient(os.Getenv("SENDGRID_API_KEY"))
+
+	mailClient := mail.NewClient(
+		os.Getenv("SENDGRID_API_KEY"),
+		mail.NewEmail(os.Getenv("EMAIL_FROM_NAME"), os.Getenv("EMAIL_FROM_ADDRESS")),
+	)
 
 	// stytch config
 	stytchClient, err := stytch.NewClient(
@@ -72,7 +76,7 @@ func setup() error {
 	if err != nil {
 		return fmt.Errorf("failed to create new stytch client: %w", err)
 	}
-	cfg := middleware.NewAppConfig(store, stytchClient, storage)
+	cfg := middleware.NewAppConfig(store, stytchClient, mailClient, storage)
 
 	googleLoginURL := fmt.Sprintf(
 		"%s?public_token=%s",
@@ -140,25 +144,41 @@ func setup() error {
 	})
 
 	app.Use(middleware.NewAuthHandler(cfg, true))
-	authedHandler := func(tmpl string, args fiber.Map) fiber.Handler {
+	authedHandler := func(tmpl string, getArgs func() fiber.Map) fiber.Handler {
 		return func(c *fiber.Ctx) error {
-			_, ok := args["LoggedIn"].(bool)
-			if !ok {
-				args["LoggedIn"] = true
-			}
+			args := getArgs()
+			args["LoggedIn"] = true
 			return c.Render(tmpl, args)
 		}
 	}
 	// authenticated routes ⬇️
-	app.Get("/dash", authedHandler("dash", fiber.Map{
-		"Message": "You made it! 🎉",
+	app.Get("/dash", authedHandler("dash", func() fiber.Map {
+		return fiber.Map{
+			"Message": "You made it! 🎉",
+		}
 	}))
 
-	app.Use("/admin", middleware.NewRoleValidator(stytch.Admin))
-	// admin routes ⬇️
-	app.Get("/admin", authedHandler("success", fiber.Map{
-		"Message": "Well done, you're an admin! 👨‍💼",
+	// admin portal
+	admin := app.Group("/admin", middleware.NewRoleValidator(stytch.Admin))
+	admin.Get("/", authedHandler("admin", func() fiber.Map {
+		return fiber.Map{
+			"Message": "Well done, you're an admin! 👨‍💼",
+		}
 	}))
+	admin.Get("/volunteers", authedHandler("volunteers", func() fiber.Map {
+		// TODO NEXT: get volunteers and pass in the map here
+		return fiber.Map{}
+	}))
+	admin.Post("/volunteer", func(c *fiber.Ctx) error {
+		// create volunteer & invite
+		volunteer := volunteers.NewVolunteer(c.Context(), c.FormValue("name"), c.FormValue("email"), 0)
+		if err := volunteer.Invite(c.Context(), mailClient, engine, storage.Conn()); err != nil {
+			return utils.RenderError(c, http.StatusInternalServerError, err)
+		}
+
+		// TODO: test the volunteer creation flow
+		return c.Redirect("/volunteers", http.StatusCreated)
+	})
 
 	return app.Listen(":3000")
 }

@@ -1,0 +1,32 @@
+<section>
+  <form action="/volunteer" method="post">
+    <p>
+      <label for="name">Full name</label>
+      <input type="text" name="name" id="name" />
+    </p>
+
+    <p>
+      <label for="email">Email</label>
+      <input type="email" name="email" id="email" />
+    </p>
+
+    <button type="submit">Submit</button>
+  </form>
+</section>
+<section>
+  <h2>Volunteers</h2>
+  <table>
+    <tr>
+      <th>Name</th>
+      <th>Email</th>
+      <th>Status</th>
+    </tr>
+    {{range $volunteer := .Volunteers}}
+    <tr>
+      <td>{{$volunteer.Name}}</td>
+      <td>{{$volunteer.Email}}</td>
+      <td>{{$volunteer.Status}}</td>
+    </tr>
+    {{end}}
+  </table>
+</section>
