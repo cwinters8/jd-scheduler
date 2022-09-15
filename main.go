@@ -14,8 +14,8 @@ import (
 	"scheduler/mail"
 	"scheduler/middleware"
 	"scheduler/stytch"
+	"scheduler/users"
 	"scheduler/utils"
-	"scheduler/volunteers"
 
 	"github.com/gofiber/fiber/v2"
 	"github.com/gofiber/fiber/v2/middleware/favicon"
@@ -144,39 +144,60 @@ func setup() error {
 	})
 
 	app.Use(middleware.NewAuthHandler(cfg, true))
-	authedHandler := func(tmpl string, getArgs func() fiber.Map) fiber.Handler {
+	authedHandler := func(tmpl string, getArgs func(ctx *fiber.Ctx) (fiber.Map, error)) fiber.Handler {
 		return func(c *fiber.Ctx) error {
-			args := getArgs()
+			args, err := getArgs(c)
+			if err != nil {
+				return utils.RenderError(c, http.StatusInternalServerError, fmt.Errorf("error in getArgs func: %w", err))
+			}
 			args["LoggedIn"] = true
 			return c.Render(tmpl, args)
 		}
 	}
+
+	// TODO NEXT: restrict allowed users to those invited/present in the database with a valid status
+
 	// authenticated routes ⬇️
-	app.Get("/dash", authedHandler("dash", func() fiber.Map {
-		return fiber.Map{
-			"Message": "You made it! 🎉",
-		}
-	}))
+	app.Get("/dash", func(c *fiber.Ctx) error {
+		return authedHandler("dash", func(ctx *fiber.Ctx) (fiber.Map, error) {
+			return fiber.Map{
+				"Message": "You made it! 🎉",
+			}, nil
+		})(c)
+	})
 
 	// admin portal
 	admin := app.Group("/admin", middleware.NewRoleValidator(stytch.Admin))
-	admin.Get("/", authedHandler("admin", func() fiber.Map {
-		return fiber.Map{
-			"Message": "Well done, you're an admin! 👨‍💼",
-		}
-	}))
-	admin.Get("/volunteers", authedHandler("volunteers", func() fiber.Map {
-		// TODO NEXT: get volunteers and pass in the map here
-		return fiber.Map{}
-	}))
+	admin.Get("/", func(c *fiber.Ctx) error {
+		return authedHandler("admin", func(ctx *fiber.Ctx) (fiber.Map, error) {
+			return fiber.Map{
+				"Message": "Well done, you're an admin! 👨‍💼",
+			}, nil
+		})(c)
+	})
+	// TODO: test the volunteer creation flow
+	admin.Get("/volunteers", func(c *fiber.Ctx) error {
+		return authedHandler("volunteers", func(ctx *fiber.Ctx) (fiber.Map, error) {
+			vols, err := users.GetAllVolunteers(ctx.Context(), storage.Conn())
+			if err != nil {
+				return fiber.Map{}, fmt.Errorf("failed to get volunteers: %w", err)
+			}
+			return fiber.Map{
+				"Volunteers": vols,
+			}, nil
+		})(c)
+	})
 	admin.Post("/volunteer", func(c *fiber.Ctx) error {
 		// create volunteer & invite
-		volunteer := volunteers.NewVolunteer(c.Context(), c.FormValue("name"), c.FormValue("email"), 0)
+		volunteer, err := users.NewVolunteer(c.FormValue("name"), c.FormValue("email"), users.UndefinedStatus)
+		if err != nil {
+			return utils.RenderError(c, http.StatusInternalServerError, err)
+		}
+
 		if err := volunteer.Invite(c.Context(), mailClient, engine, storage.Conn()); err != nil {
 			return utils.RenderError(c, http.StatusInternalServerError, err)
 		}
 
-		// TODO: test the volunteer creation flow
 		return c.Redirect("/volunteers", http.StatusCreated)
 	})
 
