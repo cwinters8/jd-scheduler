@@ -84,48 +84,52 @@ func (u *User) Update(ctx context.Context, pool *pgxpool.Pool) error {
 		return fmt.Errorf("invalid user: %w", err)
 	}
 
-	// try to select existing user
-	var (
-		user *User
-		err  error
-	)
-	if len(u.StytchID) > 0 {
-		user, err = GetUserByStytchID(ctx, u.StytchID, pool)
-	} else {
-		user, err = GetUserByEmail(ctx, u.Email, pool)
-	}
-	if err != nil {
-		return err
-	}
-
-	// if existing user is not found, insert
-	if user == nil {
-		var id int
-		if err := pgxscan.Get(
-			ctx,
-			pool,
-			&id,
-			"insert into users(name, email, stytch_id, status, type) values ($1, $2, $3, $4, $5) returning id",
-			u.Name,
-			u.Email,
-			u.StytchID,
-			u.Status,
-			u.Type,
-		); err != nil {
-			return fmt.Errorf("failed to insert user: %w", err)
+	if u.ID < 1 {
+		// try to select existing user
+		var (
+			user *User
+			err  error
+		)
+		if len(u.StytchID) > 0 {
+			user, err = GetUserByStytchID(ctx, u.StytchID, pool)
+		} else {
+			user, err = GetUserByEmail(ctx, u.Email, pool)
 		}
-		u.ID = id
-		return nil
+		if err != nil {
+			return fmt.Errorf("failed to select existing user: %w", err)
+		}
+
+		// if existing user is not found, insert
+		if user == nil {
+			var id int
+			if err := pgxscan.Get(
+				ctx,
+				pool,
+				&id,
+				"insert into users(name, email, stytch_id, status, type) values ($1, $2, $3, $4, $5) returning id",
+				u.Name,
+				u.Email,
+				u.StytchID,
+				u.Status,
+				u.Type,
+			); err != nil {
+				return fmt.Errorf("failed to insert user: %w", err)
+			}
+			u.ID = id
+			return nil
+		}
+		u.ID = user.ID
 	}
 
-	// if user is found, update. stytch ID should not be updated
+	// stytch ID should never need to be updated, so that field is omitted here
 	if _, err := pool.Exec(
 		ctx,
-		"update users set name = $1, email = $2, status = $3, type = $4",
+		"update users set name = $1, email = $2, status = $3, type = $4 where id = $5",
 		u.Name,
 		u.Email,
 		u.Status,
 		u.Type,
+		u.ID,
 	); err != nil {
 		return fmt.Errorf("failed to update user: %w", err)
 	}

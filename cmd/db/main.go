@@ -5,7 +5,9 @@ import (
 	"flag"
 	"fmt"
 	"log"
+	"net/mail"
 	"os"
+	"strconv"
 	"strings"
 
 	"github.com/jackc/pgx/v4"
@@ -29,7 +31,18 @@ func main() {
 			log.Fatalf("failed to connect to db: %s", err.Error())
 		}
 		// initialize db
-		if err := Init(ctx, *drop, conn); err != nil {
+		isProd, err := strconv.ParseBool(os.Getenv("PROD"))
+		if err != nil {
+			fmt.Printf("failed to parse PROD env variable as bool: %s\ndefaulting to false\n", err.Error())
+			isProd = false
+		}
+		adminName := os.Getenv("ADMIN_NAME")
+		adminEmail := os.Getenv("ADMIN_EMAIL")
+		e, err := mail.ParseAddress(fmt.Sprintf("%s <%s>", adminName, adminEmail))
+		if err != nil {
+			log.Fatalf("failed to parse admin email address: %s", err.Error())
+		}
+		if err := Init(ctx, *drop, isProd, e.Name, e.Address, conn); err != nil {
 			log.Fatalf("failed to initialize db: %s", err.Error())
 		}
 	} else {

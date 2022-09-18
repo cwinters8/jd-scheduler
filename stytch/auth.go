@@ -29,7 +29,7 @@ func NewClient(env config.Env, projectID string, secret string) (*Client, error)
 }
 
 // on success, returns a session token valid for 60 minutes
-func (c *Client) AuthenticateOauth(token string, sessionToken string) (string, error) {
+func (c *Client) AuthenticateOauth(token string, sessionToken string, validator func(stytchID string) error) (string, error) {
 	if len(token) < 1 {
 		return "", errors.New("empty token")
 	}
@@ -41,16 +41,10 @@ func (c *Client) AuthenticateOauth(token string, sessionToken string) (string, e
 	if err != nil {
 		return "", fmt.Errorf("unable to authenticate oauth token: %w", err)
 	}
-	// TODO: validate user email here, and if the user was in `invited` status, move them to `active`
 
-	// userResp, err := c.api.Users.Get(resp.UserID)
-	// if err != nil {
-	// 	return "", fmt.Errorf("failed to get user info: %w", err)
-	// }
-	// // check if any of the user's emails are in the database, and not in a "deleted" status
-	// for _, email := range userResp.Emails {
-
-	// }
+	if err := validator(resp.UserID); err != nil {
+		return "", fmt.Errorf("failed to validate user: %w", err)
+	}
 
 	return resp.SessionToken, nil
 }

@@ -116,11 +116,11 @@ func setup() error {
 		sessToken, _ := sess.Get("session_token").(string)
 		// revoke stytch session
 		if err := stytchClient.RevokeSession(sessToken); err != nil {
-			return utils.RenderError(c, http.StatusInternalServerError, fmt.Errorf("failed to revoke stytch session: %w", err))
+			fmt.Println(fmt.Errorf("failed to revoke stytch session: %w", err))
 		}
 		// destroy store session
 		if err := sess.Destroy(); err != nil {
-			return utils.RenderError(c, http.StatusInternalServerError, fmt.Errorf("failed to destroy session: %w", err))
+			fmt.Println(fmt.Errorf("failed to destroy session: %w", err))
 		}
 		return c.Redirect("/")
 	})
@@ -133,7 +133,29 @@ func setup() error {
 		// try to get an existing session token from the store
 		currentSessToken, _ := sess.Get("session_token").(string)
 		// authenticate
-		sessToken, err := stytchClient.AuthenticateOauth(c.Query("token"), currentSessToken)
+		sessToken, err := stytchClient.AuthenticateOauth(c.Query("token"), currentSessToken, func(stytchID string) error {
+			ctx := c.Context()
+			user, err := users.GetUserByStytchID(ctx, stytchID, pool)
+			if err != nil {
+				return fmt.Errorf("failed to retrieve user: %w", err)
+			}
+			// could probably check for nil user pointer in GetUserByStytchID instead of in every place its called...
+			if user == nil {
+				return fmt.Errorf("user not found")
+			}
+			switch user.Status {
+			case users.DeletedStatus, users.UndefinedStatus:
+				return fmt.Errorf("invalid user status")
+			case users.PendingStatus, users.InvitedStatus, users.InactiveStatus:
+				user.Status = users.ActiveStatus
+				if err := user.Update(ctx, pool); err != nil {
+					err = fmt.Errorf("failed to update status for user with stytch ID %q: %w", user.StytchID, err)
+					fmt.Println(err)
+					return err
+				}
+			}
+			return nil
+		})
 		if err != nil {
 			return utils.RenderError(c, http.StatusUnauthorized, fmt.Errorf("failed to authenticate oauth token: %w", err))
 		}
@@ -185,7 +207,7 @@ func setup() error {
 			}, nil
 		})(c)
 	})
-	// TODO: test the volunteer creation flow
+
 	admin.Get("/volunteers", func(c *fiber.Ctx) error {
 		return authedHandler("volunteers", func(ctx *fiber.Ctx) (fiber.Map, error) {
 			vols, err := users.GetAllVolunteers(ctx.Context(), pool)
