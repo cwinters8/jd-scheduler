@@ -113,10 +113,11 @@ func setup() error {
 		if err != nil {
 			return utils.RenderGetSessionError(c, err)
 		}
-		sessToken, _ := sess.Get("session_token").(string)
-		// revoke stytch session
-		if err := stytchClient.RevokeSession(sessToken); err != nil {
-			fmt.Println(fmt.Errorf("failed to revoke stytch session: %w", err))
+		if sessToken, ok := sess.Get("session_token").(string); ok {
+			// revoke stytch session
+			if err := stytchClient.RevokeSession(sessToken); err != nil {
+				fmt.Println(fmt.Errorf("failed to revoke stytch session: %w", err))
+			}
 		}
 		// destroy store session
 		if err := sess.Destroy(); err != nil {
