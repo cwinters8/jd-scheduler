@@ -4,101 +4,132 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strings"
 
-	"github.com/go-redis/redis/v8"
+	"github.com/georgysavva/scany/pgxscan"
+	"github.com/jackc/pgx/v4"
+	"github.com/jackc/pgx/v4/pgxpool"
 )
 
 type User struct {
-	Name   string
-	Email  string
-	Status Status
-	Type   Type
+	ID       int
+	Name     string
+	Email    string
+	StytchID string
+	Status   Status
+	Type     Type
 }
-
-const redisKey = "Users"
 
 // get users by type
-func (t Type) GetUsers(ctx context.Context, rdb *redis.Client) ([]User, error) {
-	users, err := GetUsers(ctx, rdb)
-	if err != nil {
-		return nil, fmt.Errorf("failed to get users: %w", err)
+func (t Type) GetUsers(ctx context.Context, pool *pgxpool.Pool) ([]*User, error) {
+	var users []*User
+	if err := pgxscan.Select(ctx, pool, &users, "select * from users where type=$1", t); err != nil {
+		return nil, fmt.Errorf("failed to get users from db: %w", err)
 	}
-	var filteredUsers []User
-	for _, u := range users {
-		if u.Type == t {
-			filteredUsers = append(filteredUsers, u)
-		}
-	}
-	return filteredUsers, nil
+	return users, nil
 }
 
-func NewUser(name string, email string, status Status, userType Type) (*User, error) {
+func (u *User) IsValid() error {
 	var err error
-	if status >= endStatus || status < UndefinedStatus {
-		err = fmt.Errorf("invalid status provided")
+	if u.Status >= endStatus || u.Status < UndefinedStatus {
+		err = fmt.Errorf("invalid status %d provided", u.Status)
 	}
-	if userType >= endType || userType < UndefinedType {
-		msg := "invalid type provided"
+	if u.Type >= endType || u.Type < UndefinedType {
+		msg := fmt.Sprintf("invalid type %d provided", u.Type)
 		if err != nil {
 			err = fmt.Errorf("%w; %s", err, msg)
 		} else {
 			err = fmt.Errorf(msg)
 		}
 	}
-	if err != nil {
-		return nil, err
-	}
-	if status == UndefinedStatus {
-		status = PendingStatus
-	}
-	return &User{
-		Name:   name,
-		Email:  email,
-		Status: status,
-	}, nil
+	return err
 }
 
-func GetUsers(ctx context.Context, rdb *redis.Client) ([]User, error) {
-	var users []User
-	if err := rdb.LRange(ctx, redisKey, 0, -1).ScanSlice(users); err != nil {
-		return users, fmt.Errorf("failed to get users: %w", err)
+// get all users
+func GetUsers(ctx context.Context, pool *pgxpool.Pool) ([]*User, error) {
+	var users []*User
+	if err := pgxscan.Select(ctx, pool, &users, "select * from users"); err != nil {
+		return nil, fmt.Errorf("failed to get users from db: %w", err)
 	}
 	return users, nil
 }
 
-// if user was found, returns a 0 or greater int64
-// if user was not found, returns a negative value (currently -1 specifically)
-func (u *User) GetIndexByEmail(ctx context.Context, rdb *redis.Client) (int64, error) {
-	// get users
-	users, err := GetUsers(ctx, rdb)
-	if err != nil {
-		return 0, fmt.Errorf("failed to get users: %w", err)
-	}
-
-	// iterate through users and find the first one with the matching email
-	for idx, user := range users {
-		if user.Email == u.Email {
-			return int64(idx), nil
+func GetUserByEmail(ctx context.Context, email string, pool *pgxpool.Pool) (*User, error) {
+	var user User
+	if err := pgxscan.Get(ctx, pool, &user, "select * from users where email=$1", email); err != nil {
+		if err == pgx.ErrNoRows {
+			return nil, nil
 		}
+		return nil, fmt.Errorf("failed to get user: %w", err)
 	}
-
-	return -1, nil
+	return &user, nil
 }
 
-// TODO: need a way to update a user's email address without adding a new user
+func GetUserByStytchID(ctx context.Context, stytchID string, pool *pgxpool.Pool) (*User, error) {
+	var user User
+	if err := pgxscan.Get(ctx, pool, &user, "select * from users where stytch_id=$1", stytchID); err != nil {
+		if err == pgx.ErrNoRows || strings.Contains(err.Error(), "no rows in result") {
+			return nil, nil
+		}
+		return nil, fmt.Errorf("failed to get user: %w", err)
+	}
+	return &user, nil
+}
 
-// updates the user if the user could be found in the list by email.
+// updates the user if the user could be found in the list by stytch ID when possible, falling back to email as needed.
 // if the user cannot be found, the user is added instead
-func (u *User) Update(ctx context.Context, rdb *redis.Client) error {
-	idx, err := u.GetIndexByEmail(ctx, rdb)
+func (u *User) Update(ctx context.Context, pool *pgxpool.Pool) error {
+	// if provided user is invalid, return error
+	if err := u.IsValid(); err != nil {
+		return fmt.Errorf("invalid user: %w", err)
+	}
+
+	// try to select existing user
+	var (
+		user *User
+		err  error
+	)
+	if len(u.StytchID) > 0 {
+		user, err = GetUserByStytchID(ctx, u.StytchID, pool)
+	} else {
+		user, err = GetUserByEmail(ctx, u.Email, pool)
+	}
 	if err != nil {
-		return fmt.Errorf("failed to get index for user %q: %w", u.Email, err)
+		return err
 	}
-	// if the returned index is negative, add the user instead of updating
-	if idx < 0 {
-		return rdb.RPush(ctx, redisKey, u).Err()
+
+	// if existing user is not found, insert
+	if user == nil {
+		var id int
+		if err := pgxscan.Get(
+			ctx,
+			pool,
+			&id,
+			"insert into users(name, email, stytch_id, status, type) values ($1, $2, $3, $4, $5) returning id",
+			u.Name,
+			u.Email,
+			u.StytchID,
+			u.Status,
+			u.Type,
+		); err != nil {
+			return fmt.Errorf("failed to insert user: %w", err)
+		}
+		u.ID = id
+		return nil
 	}
-	return rdb.LSet(ctx, redisKey, idx, u).Err()
+
+	// if user is found, update. stytch ID should not be updated
+	if _, err := pool.Exec(
+		ctx,
+		"update users set name = $1, email = $2, status = $3, type = $4",
+		u.Name,
+		u.Email,
+		u.Status,
+		u.Type,
+	); err != nil {
+		return fmt.Errorf("failed to update user: %w", err)
+	}
+	return nil
 }
 
 func (u *User) MarshalBinary() ([]byte, error) {
@@ -116,6 +147,7 @@ const (
 	RecruitType
 	VolunteerType
 	AdminType
+	// new types should go here so we don't change the int values associated with each type
 	endType
 )
 
@@ -130,15 +162,6 @@ func (t Type) String() string {
 	default:
 		return ""
 	}
-}
-
-func getType(s string) Type {
-	for i := RecruitType; i < endType; i++ {
-		if i.String() == s {
-			return i
-		}
-	}
-	return UndefinedType
 }
 
 func (t Type) MarshalJSON() ([]byte, error) {

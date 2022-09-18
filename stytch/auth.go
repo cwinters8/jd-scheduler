@@ -41,6 +41,17 @@ func (c *Client) AuthenticateOauth(token string, sessionToken string) (string, e
 	if err != nil {
 		return "", fmt.Errorf("unable to authenticate oauth token: %w", err)
 	}
+	// TODO: validate user email here, and if the user was in `invited` status, move them to `active`
+
+	// userResp, err := c.api.Users.Get(resp.UserID)
+	// if err != nil {
+	// 	return "", fmt.Errorf("failed to get user info: %w", err)
+	// }
+	// // check if any of the user's emails are in the database, and not in a "deleted" status
+	// for _, email := range userResp.Emails {
+
+	// }
+
 	return resp.SessionToken, nil
 }
 

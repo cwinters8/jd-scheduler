@@ -13,6 +13,7 @@ const (
 	ActiveStatus
 	InactiveStatus
 	DeletedStatus
+	// new statuses should go here so we don't change the int values associated with each status
 	endStatus
 )
 

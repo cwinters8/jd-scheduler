@@ -1,11 +1,8 @@
 package mail
 
 import (
-	"bytes"
 	"fmt"
 
-	"github.com/gofiber/fiber/v2"
-	"github.com/gofiber/template/html"
 	"github.com/sendgrid/sendgrid-go"
 	"github.com/sendgrid/sendgrid-go/helpers/mail"
 )
@@ -32,15 +29,10 @@ func NewClient(apiKey string, from Email) *Client {
 	}
 }
 
-func (e Email) Send(subject string, msg string, client *Client, engine *html.Engine) error {
+func (e Email) Send(subject string, plaintextContent string, htmlContent string, client *Client) error {
 	from := mail.NewEmail(client.From.Name, client.From.Address)
-	var buf bytes.Buffer
-	if err := engine.Render(&buf, "email", fiber.Map{
-		"Body": msg,
-	}, "layouts/email"); err != nil {
-		return fmt.Errorf("failed to render email: %w", err)
-	}
-	email := mail.NewSingleEmail(from, subject, mail.NewEmail(e.Name, e.Address), msg, buf.String())
+	email := mail.NewSingleEmail(from, subject, mail.NewEmail(e.Name, e.Address), plaintextContent, htmlContent)
+	// email := mail.NewSingleEmail(from, subject, mail.NewEmail(e.Name, e.Address), plaintextContent, buf.String())
 	if _, err := client.SendGrid.Send(email); err != nil {
 		return fmt.Errorf("failed to send mail to %s: %w", e.Address, err)
 	}

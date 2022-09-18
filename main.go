@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"crypto/tls"
 	"errors"
 	"fmt"
@@ -23,6 +24,7 @@ import (
 	"github.com/gofiber/fiber/v2/middleware/session"
 	"github.com/gofiber/storage/redis"
 	"github.com/gofiber/template/html"
+	"github.com/jackc/pgx/v4/pgxpool"
 	"github.com/joho/godotenv"
 	"github.com/stytchauth/stytch-go/v5/stytch/config"
 )
@@ -76,7 +78,15 @@ func setup() error {
 	if err != nil {
 		return fmt.Errorf("failed to create new stytch client: %w", err)
 	}
-	cfg := middleware.NewAppConfig(store, stytchClient, mailClient, storage)
+
+	// db config
+	pool, err := pgxpool.Connect(context.Background(), os.Getenv("DSN"))
+	if err != nil {
+		return fmt.Errorf("failed to establish pgx pool: %w", err)
+	}
+	defer pool.Close()
+
+	cfg := middleware.NewAppConfig(store, stytchClient, mailClient, storage, pool)
 
 	googleLoginURL := fmt.Sprintf(
 		"%s?public_token=%s",
@@ -178,7 +188,7 @@ func setup() error {
 	// TODO: test the volunteer creation flow
 	admin.Get("/volunteers", func(c *fiber.Ctx) error {
 		return authedHandler("volunteers", func(ctx *fiber.Ctx) (fiber.Map, error) {
-			vols, err := users.GetAllVolunteers(ctx.Context(), storage.Conn())
+			vols, err := users.GetAllVolunteers(ctx.Context(), pool)
 			if err != nil {
 				return fiber.Map{}, fmt.Errorf("failed to get volunteers: %w", err)
 			}
@@ -189,16 +199,18 @@ func setup() error {
 	})
 	admin.Post("/volunteer", func(c *fiber.Ctx) error {
 		// create volunteer & invite
-		volunteer, err := users.NewVolunteer(c.FormValue("name"), c.FormValue("email"), users.UndefinedStatus)
+		// don't have stytch ID at this point, so passing an empty string
+		volunteer, err := users.NewVolunteer(c.FormValue("name"), c.FormValue("email"), "", users.PendingStatus)
 		if err != nil {
 			return utils.RenderError(c, http.StatusInternalServerError, err)
 		}
 
-		if err := volunteer.Invite(c.Context(), mailClient, engine, storage.Conn()); err != nil {
+		// TODO: someday this should be handled async as it causes a fairly long delay before the browser gets a response
+		if err := volunteer.Invite(c.Context(), os.Getenv("SERVER_ADDRESS"), mailClient, engine, pool, stytchClient); err != nil {
 			return utils.RenderError(c, http.StatusInternalServerError, err)
 		}
 
-		return c.Redirect("/volunteers", http.StatusCreated)
+		return c.Redirect("/admin/volunteers")
 	})
 
 	return app.Listen(":3000")

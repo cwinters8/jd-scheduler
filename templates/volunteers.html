@@ -1,5 +1,5 @@
 <section>
-  <form action="/volunteer" method="post">
+  <form action="/admin/volunteer" method="post">
     <p>
       <label for="name">Full name</label>
       <input type="text" name="name" id="name" />
@@ -17,12 +17,14 @@
   <h2>Volunteers</h2>
   <table>
     <tr>
+      <th>ID</th>
       <th>Name</th>
       <th>Email</th>
       <th>Status</th>
     </tr>
     {{range $volunteer := .Volunteers}}
     <tr>
+      <td>{{$volunteer.ID}}</td>
       <td>{{$volunteer.Name}}</td>
       <td>{{$volunteer.Email}}</td>
       <td>{{$volunteer.Status}}</td>
