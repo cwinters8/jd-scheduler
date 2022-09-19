@@ -43,9 +43,11 @@ func setup() error {
 	if err != nil {
 		return fmt.Errorf("failed to parse REDIS_PORT as int: %w", err)
 	}
-	cert, err := tls.LoadX509KeyPair(os.Getenv("PUBLIC_KEY_PATH"), os.Getenv("PRIVATE_KEY_PATH"))
+	// retrieving cert is slightly complicated because the certs have to be provided by value in the hosted env
+	// but its easier to manage and store them as files locally
+	cert, err := getX509Cert()
 	if err != nil {
-		return fmt.Errorf("failed to load cert keypair: %w", err)
+		return fmt.Errorf("failed to get X509 cert: %w", err)
 	}
 	redisCfg := redis.Config{
 		Host:     os.Getenv("REDIS_HOST"),
@@ -243,4 +245,34 @@ func main() {
 	if err := setup(); err != nil {
 		log.Fatal("failed to setup app: " + err.Error())
 	}
+}
+
+func getX509CertFromFiles() (tls.Certificate, error) {
+	var (
+		cert tls.Certificate
+		err  error
+	)
+	pubKeyPath := os.Getenv("PUBLIC_KEY_PATH")
+	privateKeyPath := os.Getenv("PRIVATE_KEY_PATH")
+	if len(pubKeyPath) > 0 && len(privateKeyPath) > 0 {
+		cert, err = tls.LoadX509KeyPair(pubKeyPath, privateKeyPath)
+		if err != nil {
+			return cert, fmt.Errorf("failed to load cert keypair: %w", err)
+		}
+		return cert, nil
+	}
+	return cert, fmt.Errorf("missing or empty env variables PUBLIC_KEY_PATH and PRIVATE_KEY_PATH")
+}
+
+func getX509Cert() (tls.Certificate, error) {
+	pubKey := os.Getenv("PUBLIC_KEY")
+	privateKey := os.Getenv("PRIVATE_KEY")
+	if len(pubKey) > 0 && len(privateKey) > 0 {
+		cert, err := tls.X509KeyPair([]byte(pubKey), []byte(privateKey))
+		if err != nil {
+			return getX509CertFromFiles()
+		}
+		return cert, nil
+	}
+	return getX509CertFromFiles()
 }
