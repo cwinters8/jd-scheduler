@@ -4,12 +4,15 @@ import (
 	"fmt"
 	"net/http"
 
-	"scheduler/stytch"
+	"scheduler/users"
 	"scheduler/utils"
 
 	"github.com/gofiber/fiber/v2"
 	"github.com/gofiber/fiber/v2/middleware/session"
+	"github.com/jackc/pgx/v4/pgxpool"
 )
+
+const localsStytchIDKey = "stytch_user_id"
 
 // if redirectOnError is true, when an error occurs the handler will:
 // - set an auth_error session value, which can optionally be provided to the user
@@ -37,32 +40,37 @@ func NewAuthHandler(cfg *AppConfig, redirectOnError bool) fiber.Handler {
 			return errorHandler(c, sess, fmt.Errorf("unable to authenticate: session token not found"), http.StatusUnauthorized)
 		}
 		// validate session token
-		user, err := cfg.AuthClient.AuthenticateSession(c.Context(), sessToken, cfg.Storage)
+		userID, err := cfg.AuthClient.AuthenticateSession(c.Context(), sessToken, cfg.Storage)
 		if err != nil {
 			return errorHandler(c, sess, err, http.StatusUnauthorized)
 		}
-		c.Locals("user", *user)
-		fmt.Printf("successfully authenticated session for user %s\n", user.UserID)
+		c.Locals(localsStytchIDKey, userID)
+		fmt.Printf("successfully authenticated session for user %s\n", userID)
 		return c.Next()
 	}
 }
 
-// check if user has correct roles to access the next route
-func NewRoleValidator(expectedRole stytch.Role) fiber.Handler {
+// check if user has correct type to access the next route
+func NewTypeValidator(expectedType users.Type, pool *pgxpool.Pool) fiber.Handler {
 	return func(c *fiber.Ctx) error {
-		user, ok := c.Locals("user").(stytch.User)
+		stytchUserID, ok := c.Locals(localsStytchIDKey).(string)
 		if !ok {
 			return utils.RenderError(c, http.StatusInternalServerError, fmt.Errorf("unable to retrieve user local value"))
 		}
-		for _, r := range user.Roles {
-			if r == expectedRole {
-				return c.Next()
-			}
+		// get user
+		user, err := users.GetUserByStytchID(c.Context(), stytchUserID, pool)
+		if err != nil {
+			return fmt.Errorf("failed to get user: %w", err)
+		}
+
+		// validate type
+		if expectedType == user.Type {
+			return c.Next()
 		}
 		return utils.RenderError(
 			c,
 			http.StatusForbidden,
-			fmt.Errorf("user with ID %q is not allowed to access %s resources", user.UserID, expectedRole.String()),
+			fmt.Errorf("user with ID %d is not allowed to access %s resources", user.ID, expectedType.String()),
 		)
 	}
 }

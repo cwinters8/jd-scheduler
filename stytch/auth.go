@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"strconv"
 
 	"github.com/gofiber/storage/redis"
 	"github.com/stytchauth/stytch-go/v5/stytch"
@@ -49,29 +48,15 @@ func (c *Client) AuthenticateOauth(token string, sessionToken string, validator 
 	return resp.SessionToken, nil
 }
 
-type User struct {
-	stytch.User
-	Roles []Role
-}
-
-func NewUser(ctx context.Context, stytchUser *stytch.User, storage *redis.Storage) (*User, error) {
-	user := User{*stytchUser, []Role{}}
-	// get roles from db
-	if err := user.GetRoles(ctx, storage); err != nil {
-		return nil, fmt.Errorf("failed to get roles: %w", err)
-	}
-	return &user, nil
-}
-
-func (c *Client) AuthenticateSession(ctx context.Context, sessionToken string, storage *redis.Storage) (*User, error) {
+func (c *Client) AuthenticateSession(ctx context.Context, sessionToken string, storage *redis.Storage) (string, error) {
 	resp, err := c.api.Sessions.Authenticate(&stytch.SessionsAuthenticateParams{
 		SessionToken:           sessionToken,
 		SessionDurationMinutes: 60,
 	})
 	if err != nil {
-		return nil, fmt.Errorf("unable to authenticate session token: %w", err)
+		return "", fmt.Errorf("unable to authenticate session token: %w", err)
 	}
-	return NewUser(ctx, &resp.User, storage)
+	return resp.User.UserID, nil
 }
 
 func (c *Client) RevokeSession(sessionToken string) error {
@@ -81,64 +66,4 @@ func (c *Client) RevokeSession(sessionToken string) error {
 		return fmt.Errorf("failed to revoke session: %w", err)
 	}
 	return nil
-}
-
-type Role int
-
-// additional roles need to be between `undefined` and `end`
-// roles should be in order of least to highest privilege
-const (
-	undefined Role = iota
-	Recruit
-	Volunteer
-	Admin
-	end
-)
-
-func (u *User) GetRoles(ctx context.Context, storage *redis.Storage) error {
-	rdb := storage.Conn()
-	rawRoles, err := rdb.SMembers(ctx, fmt.Sprintf(UserRoleKeyFormat, u.UserID)).Result()
-	if err != nil {
-		return fmt.Errorf("failed to get roles from redis: %w", err)
-	}
-	roles, err := parseRoles(rawRoles)
-	if err != nil {
-		return fmt.Errorf("failed to parse roles: %w", err)
-	}
-	u.Roles = roles
-	return nil
-}
-
-func (u *User) HasRole(ctx context.Context, role Role, storage *redis.Storage) (bool, error) {
-	return storage.Conn().SIsMember(ctx, fmt.Sprintf(UserRoleKeyFormat, u.UserID), role).Result()
-}
-
-const UserRoleKeyFormat = "user:%s:roles"
-
-func (r Role) String() string {
-	switch r {
-	case Recruit:
-		return "recruit"
-	case Volunteer:
-		return "volunteer"
-	case Admin:
-		return "admin"
-	default:
-		return ""
-	}
-}
-
-func parseRoles(rawRoles []string) ([]Role, error) {
-	var roles []Role
-	for _, r := range rawRoles {
-		roleNum, err := strconv.Atoi(r)
-		if err != nil {
-			return nil, fmt.Errorf("failed to convert raw role string to int")
-		}
-		role := Role(roleNum)
-		if role > undefined && role < end {
-			roles = append(roles, role)
-		}
-	}
-	return roles, nil
 }

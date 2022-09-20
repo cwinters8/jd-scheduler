@@ -205,7 +205,7 @@ func setup() error {
 	})
 
 	// admin portal
-	admin := app.Group("/admin", middleware.NewRoleValidator(stytch.Admin))
+	admin := app.Group("/admin", middleware.NewTypeValidator(users.AdminType, pool))
 	admin.Get("/", func(c *fiber.Ctx) error {
 		return authedHandler("admin", func(ctx *fiber.Ctx) (fiber.Map, error) {
 			return fiber.Map{
