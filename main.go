@@ -195,8 +195,6 @@ func setup() error {
 		}
 	}
 
-	// TODO NEXT: restrict allowed users to those invited/present in the database with a valid status
-
 	// authenticated routes ⬇️
 	app.Get("/dash", func(c *fiber.Ctx) error {
 		return authedHandler("dash", func(ctx *fiber.Ctx) (fiber.Map, error) {
