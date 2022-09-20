@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"net/url"
 	"os"
 	"strconv"
 	"strings"
@@ -90,10 +91,14 @@ func setup() error {
 
 	cfg := middleware.NewAppConfig(store, stytchClient, mailClient, storage, pool)
 
+	serverAddress := os.Getenv("SERVER_ADDRESS")
+	redirectURL := fmt.Sprintf("%s/oauth", url.QueryEscape(serverAddress))
 	googleLoginURL := fmt.Sprintf(
-		"%s?public_token=%s",
+		"%s?public_token=%s&login_redirect_url=%s&signup_redirect_url=%s",
 		os.Getenv("GOOGLE_OAUTH_START"),
 		os.Getenv("STYTCH_PUBLIC_TOKEN"),
+		redirectURL,
+		redirectURL,
 	)
 
 	app.Use(favicon.New(favicon.Config{
@@ -231,7 +236,7 @@ func setup() error {
 		}
 
 		// TODO: someday this should be handled async as it causes a fairly long delay before the browser gets a response
-		if err := volunteer.Invite(c.Context(), os.Getenv("SERVER_ADDRESS"), mailClient, engine, pool, stytchClient); err != nil {
+		if err := volunteer.Invite(c.Context(), serverAddress, mailClient, engine, pool, stytchClient); err != nil {
 			return utils.RenderError(c, http.StatusInternalServerError, err)
 		}
 

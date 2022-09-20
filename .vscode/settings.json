@@ -1,3 +1,14 @@
 {
-  "go.inferGopath": false
+  "go.inferGopath": false,
+  "cSpell.words": [
+    "authed",
+    "godotenv",
+    "joho",
+    "keypair",
+    "pgxpool",
+    "SENDGRID",
+    "sess",
+    "Sess",
+    "tmpl"
+  ]
 }

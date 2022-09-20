@@ -1,5 +1,6 @@
 tmp/
 .*env
+env.json
 *credentials.json
 *.pem
 *.csr
