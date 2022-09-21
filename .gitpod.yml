@@ -3,9 +3,10 @@
 # and commit this file to your remote git repository to share the goodness with others.
 
 tasks:
-  - init: go get && go test ./... && go build ./... -o tmp/main
-    command: air
+  - command: air
     openMode: tab-after
 ports:
   - name: web server
     port: 3000
+image:
+  file: .gitpod.Dockerfile

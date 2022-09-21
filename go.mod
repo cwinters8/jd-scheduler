@@ -3,10 +3,13 @@ module scheduler
 go 1.19
 
 require (
+	github.com/georgysavva/scany v1.2.0
 	github.com/gofiber/fiber/v2 v2.37.1
 	github.com/gofiber/storage/redis v0.0.0-20220907133157-551c37101c12
 	github.com/gofiber/template v1.7.1
+	github.com/jackc/pgx/v4 v4.17.2
 	github.com/joho/godotenv v1.4.0
+	github.com/sendgrid/sendgrid-go v3.11.1+incompatible
 	github.com/stytchauth/stytch-go/v5 v5.14.1
 )
 
@@ -16,7 +19,6 @@ require (
 	github.com/andybalholm/brotli v1.0.4 // indirect
 	github.com/cespare/xxhash/v2 v2.1.2 // indirect
 	github.com/dgryski/go-rendezvous v0.0.0-20200823014737-9f7001d12a5f // indirect
-	github.com/georgysavva/scany v1.2.0 // indirect
 	github.com/go-redis/redis/v8 v8.11.5 // indirect
 	github.com/go-sql-driver/mysql v1.6.0 // indirect
 	github.com/golang-jwt/jwt/v4 v4.4.2 // indirect
@@ -32,11 +34,9 @@ require (
 	github.com/jackc/pgproto3/v2 v2.3.1 // indirect
 	github.com/jackc/pgservicefile v0.0.0-20200714003250-2b9c44734f2b // indirect
 	github.com/jackc/pgtype v1.12.0 // indirect
-	github.com/jackc/pgx/v4 v4.17.2 // indirect
 	github.com/jackc/puddle v1.3.0 // indirect
 	github.com/klauspost/compress v1.15.9 // indirect
 	github.com/sendgrid/rest v2.6.9+incompatible // indirect
-	github.com/sendgrid/sendgrid-go v3.11.1+incompatible // indirect
 	github.com/stytchauth/stytch-go/v4 v4.0.1 // indirect
 	github.com/valyala/bytebufferpool v1.0.0 // indirect
 	github.com/valyala/fasthttp v1.40.0 // indirect
