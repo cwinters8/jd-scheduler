@@ -14,6 +14,8 @@ import (
 	"github.com/joho/godotenv"
 )
 
+// TODO: could use cli args or a (cue?) config file to pass values instead of os.Getenv
+
 func main() {
 	init := flag.Bool("init", false, "initializes the required tables")
 	drop := flag.Bool("drop", false, "used in combination with the init flag. will cause existing tables to be dropped prior to initialization")

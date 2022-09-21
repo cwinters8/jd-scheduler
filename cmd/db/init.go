@@ -8,12 +8,15 @@ import (
 	"scheduler/stytch"
 	"scheduler/users"
 
+	// "scheduler/calendar"
+
 	"github.com/jackc/pgx/v4"
 	"github.com/stytchauth/stytch-go/v5/stytch/config"
 )
 
 func Init(ctx context.Context, withDrop bool, isProd bool, adminName string, adminEmail string, dbConn *pgx.Conn) error {
 	if withDrop {
+		// TODO: delete existing calendars?
 		if _, err := dbConn.Exec(ctx, "drop table users cascade"); err != nil {
 			fmt.Println(fmt.Errorf("failed to drop tables: %w", err))
 			// not aborting on error dropping table - table may not exist
