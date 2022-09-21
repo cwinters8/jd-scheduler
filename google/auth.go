@@ -61,7 +61,7 @@ func GetClient(ctx context.Context, scope string, credsFilePath string) (*http.C
 			Redirect: true,
 		}
 	}
-	return cfg.Client(ctx, token), nil
+	return cfg.Client(ctx, token), nil // cfg.Client glues the oauth2.Token to the http client
 }
 
 func tokenFromFile(file string) (*oauth2.Token, error) {
