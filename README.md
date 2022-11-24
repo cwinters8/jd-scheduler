@@ -7,8 +7,8 @@
 - [x] an admin should be able to add email addresses to a volunteer list. new members would be sent invites to login to the scheduler. only admin-provided emails should be able to login.
 - [x] get auth working in the hosted app on replit
 - [x] fix role checks - should reference cockroach db instead of upstash redis
-- [ ] configure stytch oauth scopes for accessing the Calendar API
-- [ ] create a new calendar when db is initialized, and store its id etc in the db
+- [x] configure stytch oauth scopes for accessing the Calendar API
+- [ ] create a new calendar when db is initialized, and store its id in the db
   - need to figure out how to specify what users can manage events on the created calendar
 - [ ] a volunteer should be able to add themself to a shift
 - [ ] admins need to be able to be able to invite recruits
@@ -20,6 +20,7 @@
 ## primetime requirements
 
 - [ ] implement live/prod auth
+- [ ] add custom domain in stytch oauth settings
 - [ ] move mail config to justice dems domain
 - [ ] connect Calendar API stuff to justice dems google workspace
 - [ ] configure oauth consent screen in GCP (if not using OB GCP)

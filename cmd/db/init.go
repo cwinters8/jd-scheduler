@@ -8,8 +8,6 @@ import (
 	"scheduler/stytch"
 	"scheduler/users"
 
-	// "scheduler/calendar"
-
 	"github.com/jackc/pgx/v4"
 	"github.com/stytchauth/stytch-go/v5/stytch/config"
 )
@@ -33,7 +31,6 @@ func Init(ctx context.Context, withDrop bool, isProd bool, adminName string, adm
 		return fmt.Errorf("failed to create users table: %w", err)
 	}
 
-	// add initial admin user
 	cfg := config.EnvTest
 	if isProd {
 		cfg = config.EnvLive
@@ -47,6 +44,7 @@ func Init(ctx context.Context, withDrop bool, isProd bool, adminName string, adm
 	if err != nil {
 		return fmt.Errorf("failed to create new stytch client: %w", err)
 	}
+	// add initial admin user
 	stytchID, err := client.CreateUser(adminEmail)
 	if err != nil {
 		return fmt.Errorf("failed to create stytch user: %w", err)
@@ -63,5 +61,12 @@ func Init(ctx context.Context, withDrop bool, isProd bool, adminName string, adm
 	); err != nil {
 		return fmt.Errorf("failed to add admin user to db: %w", err)
 	}
+
+	// get a connection to redis
+
+	// create calendar
+
+	// allow admin user to access
+
 	return nil
 }

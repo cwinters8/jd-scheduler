@@ -30,9 +30,13 @@ import (
 	"github.com/stytchauth/stytch-go/v5/stytch/config"
 )
 
+// TODO: embed static files into the binary (!!)
+// //go:embed static/*
+// var embedDirStatic embed.FS
+
 func setup() error {
 	if err := godotenv.Load(); err != nil && !strings.Contains(err.Error(), "no such file") {
-		return errors.New("failed to load .env: " + err.Error())
+		return errors.New("failed to load .env: " + err.Error()) // TODO: change this to fmt.Errorf
 	}
 
 	engine := html.New("templates", ".html")
